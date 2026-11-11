@@ -35,3 +35,11 @@ SESSION_MAX_AGE_SECONDS: Final[int] = (
 
 # Solo debe ser `true` cuando la app se sirve por HTTPS.
 SESSION_COOKIE_SECURE: Final[bool] = os.getenv("SESSION_COOKIE_SECURE") == "true"
+
+RESET_TOKEN_SECRET: Final[str] = os.getenv(
+    "RESET_TOKEN_SECRET", "dev-reset-secret-cambiar-en-produccion"
+)
+
+RESET_TOKEN_EXPIRE_MINUTES: Final[int] = 15
+
+FRONTEND_URL: Final[str] = os.getenv("FRONTEND_URL", "http://localhost:3000")
