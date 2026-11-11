@@ -2,7 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.auth.auth_schemas import LoginDto, RegisterDto, User
+# NUEVO: se agregan ForgotPasswordDto y ForgotPasswordResponse al import.
+from app.auth.auth_schemas import (
+    ForgotPasswordDto,
+    ForgotPasswordResponse,
+    LoginDto,
+    RegisterDto,
+    User,
+)
 from app.auth.auth_service import AuthServiceDep
 from app.auth.session import (
     UNAUTHORIZED_MESSAGE,
@@ -63,3 +70,12 @@ def me(session: CurrentSession, response: Response, db: DbSession) -> User:
         )
 
     return User.model_validate(user)
+
+
+# NUEVO: pide el enlace de recuperación. Siempre responde 200 para no revelar
+# si el correo está registrado.
+@router.post("/password/forgot")
+def forgot_password(
+    body: ForgotPasswordDto, service: AuthServiceDep
+) -> ForgotPasswordResponse:
+    return service.forgot_password(body)
