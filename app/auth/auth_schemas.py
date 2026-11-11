@@ -125,6 +125,11 @@ class ForgotPasswordDto(BaseModel):
         return value
 
 
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_link: str | None = None
+
+
 class ResetPasswordDto(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

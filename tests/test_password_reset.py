@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.auth.auth_schemas import ResetPasswordDto
 from app.auth.auth_service import AuthService
 from app.auth.password import hash_password, verify_password
+from app.auth.reset_token import create_reset_token
 from app.main import create_app
 from app.shared.database import Base, get_db
 from app.users.users_models import (
@@ -160,11 +161,13 @@ class PasswordResetTests(unittest.TestCase):
             )
             db.commit()
 
-        self.secret_patch = patch(
-            "app.auth.auth_service.PASSWORD_RESET_JWT_SECRET", TEST_SECRET
-        )
-        self.secret_patch.start()
-        self.addCleanup(self.secret_patch.stop)
+        for target in (
+            "app.auth.auth_service.RESET_TOKEN_SECRET",
+            "app.auth.reset_token.RESET_TOKEN_SECRET",
+        ):
+            secret_patch = patch(target, TEST_SECRET)
+            secret_patch.start()
+            self.addCleanup(secret_patch.stop)
         self.app = create_app()
 
         def test_db():
@@ -246,6 +249,32 @@ class PasswordResetTests(unittest.TestCase):
                 self.assertEqual(status, 401)
                 self.assertEqual(json.loads(content)["code"], 401)
 
+        self.assert_unchanged()
+
+    def test_reset_accepts_token_from_existing_issuer(self):
+        token, jti, expires_at = create_reset_token(self.user_id)
+        with Session(self.engine) as db:
+            db.add(
+                PasswordResetTokenModel(
+                    jti=jti, userId=self.user_id, expiresAt=expires_at
+                )
+            )
+            db.commit()
+
+        self.assertEqual(self.reset(token), (204, b""))
+
+    def test_existing_forgot_endpoint_is_preserved(self):
+        status, content = asyncio.run(
+            request(
+                self.app,
+                "/api/auth/password/forgot",
+                {"email": "desconocido@example.com"},
+            )
+        )
+        self.assertEqual(status, 200)
+        data = json.loads(content)["data"]
+        self.assertIn("Si el correo está registrado", data["message"])
+        self.assertIsNone(data["reset_link"])
         self.assert_unchanged()
 
     def test_jti_must_belong_to_subject(self):

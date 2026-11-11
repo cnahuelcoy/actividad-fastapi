@@ -6,9 +6,16 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from jwt.exceptions import InvalidTokenError
 
-from app.auth.auth_schemas import LoginDto, RegisterDto, ResetPasswordDto
+from app.auth.auth_schemas import (
+    ForgotPasswordDto,
+    ForgotPasswordResponse,
+    LoginDto,
+    RegisterDto,
+    ResetPasswordDto,
+)
 from app.auth.password import hash_password, verify_password
-from app.shared.config import PASSWORD_RESET_JWT_SECRET
+from app.auth.reset_token import ALGORITHM, RESET_TOKEN_PURPOSE, create_reset_token
+from app.shared.config import FRONTEND_URL, RESET_TOKEN_SECRET
 from app.shared.database import DbSession
 from app.shared.exceptions import conflict
 from app.users.users_models import UserModel
@@ -23,14 +30,14 @@ def _invalid_reset_token() -> HTTPException:
 
 
 def _decode_reset_token(token: str) -> tuple[UUID, str, datetime]:
-    if not PASSWORD_RESET_JWT_SECRET:
-        raise RuntimeError("Falta configurar PASSWORD_RESET_JWT_SECRET")
+    if not RESET_TOKEN_SECRET:
+        raise RuntimeError("Falta configurar RESET_TOKEN_SECRET")
 
     try:
         payload = jwt.decode(
             token,
-            PASSWORD_RESET_JWT_SECRET,
-            algorithms=["HS256"],
+            RESET_TOKEN_SECRET,
+            algorithms=[ALGORITHM],
             options={
                 "verify_signature": True,
                 "verify_exp": True,
@@ -38,7 +45,7 @@ def _decode_reset_token(token: str) -> tuple[UUID, str, datetime]:
             },
         )
 
-        if payload["purpose"] != "password_reset":
+        if payload["purpose"] != RESET_TOKEN_PURPOSE:
             raise InvalidTokenError()
 
         subject = payload["sub"]
@@ -98,6 +105,20 @@ class AuthService:
             )
 
         return user
+
+    def forgot_password(self, data: ForgotPasswordDto) -> ForgotPasswordResponse:
+        message = "Si el correo está registrado, recibirás un enlace de recuperación."
+        user = self.users_repository.find_by_email(data.email)
+
+        if user is None:
+            return ForgotPasswordResponse(message=message)
+
+        token, jti, expires_at = create_reset_token(user.id)
+
+        return ForgotPasswordResponse(
+            message=message,
+            reset_link=f"{FRONTEND_URL}/reset-password?token={token}",
+        )
 
     def reset_password(self, data: ResetPasswordDto) -> None:
         user_id, jti, expires_at = _decode_reset_token(data.reset_token)
