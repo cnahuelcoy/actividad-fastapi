@@ -74,7 +74,7 @@ def me(session: CurrentSession, response: Response, db: DbSession) -> User:
 
 # NUEVO: pide el enlace de recuperación. Siempre responde 200 para no revelar
 # si el correo está registrado.
-@router.post("/password/forgot")
+@router.post("/password/forgot", response_model_exclude_none=True)
 def forgot_password(
     body: ForgotPasswordDto, service: AuthServiceDep
 ) -> ForgotPasswordResponse:

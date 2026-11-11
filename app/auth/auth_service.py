@@ -13,7 +13,7 @@ from app.auth.reset_token import create_reset_token
 from app.shared.config import FRONTEND_URL
 from app.shared.database import DbSession
 from app.shared.exceptions import conflict
-from app.users.users_models import UserModel
+from app.users.users_models import PasswordResetTokenModel, UserModel
 from app.users.users_repository import UsersRepository
 
 
@@ -58,6 +58,15 @@ class AuthService:
             return ForgotPasswordResponse(message=message)
 
         token, jti, expires_at = create_reset_token(user.id)
+        self.db.add(
+            PasswordResetTokenModel(
+                jti=jti,
+                userId=user.id,
+                expiresAt=expires_at,
+                usedAt=None,
+            )
+        )
+        self.db.commit()
 
         return ForgotPasswordResponse(
             message=message,
