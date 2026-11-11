@@ -31,3 +31,21 @@ class UserSessionModel(Base):
     expiresAt: Mapped[datetime] = mapped_column(
         "expires_at", DateTime(timezone=True), index=True
     )
+
+
+class PasswordResetTokenModel(Base):
+    __tablename__ = "password_reset_tokens"
+
+    # Coincide con el claim jti del JWT; su clave primaria impide duplicados.
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    userId: Mapped[UUID] = mapped_column(
+        "user_id", ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    expiresAt: Mapped[datetime] = mapped_column(
+        "expires_at", DateTime(timezone=True), index=True
+    )
+    # NULL significa pendiente. El endpoint reset asigna la fecha de uso
+    # dentro de la misma transacción que cambia la contraseña.
+    usedAt: Mapped[datetime | None] = mapped_column(
+        "used_at", DateTime(timezone=True), nullable=True
+    )
