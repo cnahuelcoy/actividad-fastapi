@@ -111,3 +111,35 @@ def _email_errors(v: object) -> list[str]:
 def _raise_validation(messages: list[str]) -> None:
     if messages:
         raise ValueError(", ".join(messages))
+
+
+class ForgotPasswordDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _validate_email(cls, value: object) -> object:
+        _raise_validation(_email_errors(value))
+        return value
+
+
+class ResetPasswordDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reset_token: str
+    new_password: str
+
+    @field_validator("new_password", mode="before")
+    @classmethod
+    def _validate_new_password(cls, value: object) -> object:
+        errors: list[str] = []
+
+        if not isinstance(value, str):
+            errors.append(PASSWORD_TYPE_MESSAGE)
+        if not (isinstance(value, str) and 8 <= len(value) <= 72):
+            errors.append(PASSWORD_LENGTH_MESSAGE)
+
+        _raise_validation(errors)
+        return value

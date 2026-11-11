@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.auth.auth_schemas import LoginDto, RegisterDto, User
+from app.auth.auth_schemas import LoginDto, RegisterDto, ResetPasswordDto, User
 from app.auth.auth_service import AuthServiceDep
 from app.auth.session import (
     UNAUTHORIZED_MESSAGE,
@@ -49,6 +49,17 @@ def login(
 @router.post("/logout")
 def logout(response: Response, db: DbSession, session_id: SessionCookie) -> None:
     destroy_session(db, response, session_id)
+
+
+@router.post(
+    "/password/reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    responses={401: {"description": "Token inválido, vencido o utilizado"}},
+)
+def reset_password(body: ResetPasswordDto, service: AuthServiceDep) -> Response:
+    service.reset_password(body)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me")

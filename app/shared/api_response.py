@@ -55,7 +55,11 @@ async def envelope_middleware(
 ) -> Response:
     response: Response = await call_next(request)
 
-    if not request.url.path.startswith("/api") or not 200 <= response.status_code < 400:
+    if (
+        not request.url.path.startswith("/api")
+        or not 200 <= response.status_code < 400
+        or response.status_code == 204
+    ):
         return response
 
     body_bytes = getattr(response, "body", None)

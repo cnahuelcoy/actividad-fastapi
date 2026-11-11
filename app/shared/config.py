@@ -35,3 +35,6 @@ SESSION_MAX_AGE_SECONDS: Final[int] = (
 
 # Solo debe ser `true` cuando la app se sirve por HTTPS.
 SESSION_COOKIE_SECURE: Final[bool] = os.getenv("SESSION_COOKIE_SECURE") == "true"
+
+# La misma clave HS256 que usa el emisor de los JWT de recuperación.
+PASSWORD_RESET_JWT_SECRET: Final[str | None] = os.getenv("PASSWORD_RESET_JWT_SECRET")
