@@ -98,6 +98,26 @@ class LoginDto(BaseModel):
         return v
 
 
+# NUEVO: datos que entran a POST /api/auth/password/forgot.
+class ForgotPasswordDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _validate_email(cls, v: object) -> object:
+        _raise_validation(_email_errors(v))
+        return v
+
+
+# NUEVO: respuesta de POST /api/auth/password/forgot.
+# `reset_link` solo viene si el usuario existe.
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_link: str | None = None
+
+
 def _email_errors(v: object) -> list[str]:
     return validate_email(
         v,

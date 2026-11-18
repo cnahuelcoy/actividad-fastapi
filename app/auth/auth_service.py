@@ -18,7 +18,7 @@ from app.auth.reset_token import ALGORITHM, RESET_TOKEN_PURPOSE, create_reset_to
 from app.shared.config import FRONTEND_URL, RESET_TOKEN_SECRET
 from app.shared.database import DbSession
 from app.shared.exceptions import conflict
-from app.users.users_models import UserModel
+from app.users.users_models import PasswordResetTokenModel, UserModel
 from app.users.users_repository import UsersRepository
 
 
@@ -96,8 +96,6 @@ class AuthService:
     def login(self, data: LoginDto) -> UserModel:
         user = self.users_repository.find_by_email(data.email)
 
-        # Mismo mensaje si el correo no existe o la contraseña es incorrecta,
-        # para no revelar qué correos están registrados.
         if user is None or not verify_password(data.password, user.passwordHash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -119,21 +117,6 @@ class AuthService:
             message=message,
             reset_link=f"{FRONTEND_URL}/reset-password?token={token}",
         )
-
-    def reset_password(self, data: ResetPasswordDto) -> None:
-        user_id, jti, expires_at = _decode_reset_token(data.reset_token)
-        password_hash = hash_password(data.new_password)
-
-        # El commit ocurre solo si las tres escrituras terminan correctamente.
-        # Una excepción también revierte el consumo del token.
-        with self.db.begin():
-            if not self.users_repository.consume_reset_token(jti, user_id, expires_at):
-                raise _invalid_reset_token()
-
-            if not self.users_repository.update_password_hash(user_id, password_hash):
-                raise _invalid_reset_token()
-
-            self.users_repository.invalidate_sessions(user_id)
 
 
 AuthServiceDep = Annotated[AuthService, Depends()]
