@@ -1,4 +1,4 @@
-.PHONY: install dev prod lint format format-check clean check-tools up down logs db db-reset migrate
+.PHONY: install dev prod lint format format-check clean check-tools up down logs db db-reset migrate test-db test test-unit test-e2e test-down
 
 check-tools:
 	@if ! command -v uv >/dev/null 2>&1; then \
@@ -55,3 +55,20 @@ migrate:
 # Borra la base de datos (elimina el volumen pgdata)
 db-reset:
 	docker compose down -v
+
+# --- Tests ------------------------------------------------------------------
+
+test-db:
+	docker compose -f docker-compose.test.yml up -d --wait
+
+test-unit:
+	uv run pytest -m unit
+
+test-e2e: test-db
+	uv run pytest -m e2e
+
+test: test-db
+	uv run pytest
+
+test-down:
+	docker compose -f docker-compose.test.yml down -v

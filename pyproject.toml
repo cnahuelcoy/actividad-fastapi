@@ -18,12 +18,23 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
     "ruff>=0.8.0",
 ]
 
 [tool.ruff]
 target-version = "py313"
 line-length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+    "unit: pruebas unitarias sin base de datos ni HTTP",
+    "e2e: pruebas HTTP de extremo a extremo con base de datos de test",
+]
 
 [tool.ruff.lint]
 select = [
