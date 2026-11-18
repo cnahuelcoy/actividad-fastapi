@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-# NUEVO: se agregan ForgotPasswordDto y ForgotPasswordResponse al import.
 from app.auth.auth_schemas import (
     ForgotPasswordDto,
     ForgotPasswordResponse,
     LoginDto,
     RegisterDto,
+    ResetPasswordDto,
     User,
 )
 from app.auth.auth_service import AuthServiceDep
@@ -58,6 +58,17 @@ def logout(response: Response, db: DbSession, session_id: SessionCookie) -> None
     destroy_session(db, response, session_id)
 
 
+@router.post(
+    "/password/reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    responses={401: {"description": "Token inválido, vencido o utilizado"}},
+)
+def reset_password(body: ResetPasswordDto, service: AuthServiceDep) -> Response:
+    service.reset_password(body)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/me")
 def me(session: CurrentSession, response: Response, db: DbSession) -> User:
     user = UsersRepository(db).find_by_id(session.userId)
@@ -72,9 +83,7 @@ def me(session: CurrentSession, response: Response, db: DbSession) -> User:
     return User.model_validate(user)
 
 
-# NUEVO: pide el enlace de recuperación. Siempre responde 200 para no revelar
-# si el correo está registrado.
-@router.post("/password/forgot", response_model_exclude_none=True)
+@router.post("/password/forgot")
 def forgot_password(
     body: ForgotPasswordDto, service: AuthServiceDep
 ) -> ForgotPasswordResponse:

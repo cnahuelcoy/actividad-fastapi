@@ -1,20 +1,74 @@
+from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
+import jwt
 from fastapi import Depends, HTTPException, status
+from jwt.exceptions import InvalidTokenError
 
 from app.auth.auth_schemas import (
     ForgotPasswordDto,
     ForgotPasswordResponse,
     LoginDto,
     RegisterDto,
+    ResetPasswordDto,
 )
 from app.auth.password import hash_password, verify_password
-from app.auth.reset_token import create_reset_token
-from app.shared.config import FRONTEND_URL
+from app.auth.reset_token import ALGORITHM, RESET_TOKEN_PURPOSE, create_reset_token
+from app.shared.config import FRONTEND_URL, RESET_TOKEN_SECRET
 from app.shared.database import DbSession
 from app.shared.exceptions import conflict
 from app.users.users_models import PasswordResetTokenModel, UserModel
 from app.users.users_repository import UsersRepository
+
+
+def _invalid_reset_token() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token de recuperación inválido, vencido o utilizado",
+    )
+
+
+def _decode_reset_token(token: str) -> tuple[UUID, str, datetime]:
+    if not RESET_TOKEN_SECRET:
+        raise RuntimeError("Falta configurar RESET_TOKEN_SECRET")
+
+    try:
+        payload = jwt.decode(
+            token,
+            RESET_TOKEN_SECRET,
+            algorithms=[ALGORITHM],
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "require": ["sub", "exp", "purpose", "jti"],
+            },
+        )
+
+        if payload["purpose"] != RESET_TOKEN_PURPOSE:
+            raise InvalidTokenError()
+
+        subject = payload["sub"]
+        jti = payload["jti"]
+        expiration = payload["exp"]
+
+        if not isinstance(subject, str):
+            raise InvalidTokenError()
+        if not isinstance(jti, str) or not 1 <= len(jti) <= 64 or "\x00" in jti:
+            raise InvalidTokenError()
+        if type(expiration) not in (int, float):
+            raise InvalidTokenError()
+
+        return UUID(subject), jti, datetime.fromtimestamp(expiration, UTC)
+    except (
+        InvalidTokenError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        OSError,
+    ):
+        raise _invalid_reset_token() from None
 
 
 class AuthService:
@@ -58,15 +112,6 @@ class AuthService:
             return ForgotPasswordResponse(message=message)
 
         token, jti, expires_at = create_reset_token(user.id)
-        self.db.add(
-            PasswordResetTokenModel(
-                jti=jti,
-                userId=user.id,
-                expiresAt=expires_at,
-                usedAt=None,
-            )
-        )
-        self.db.commit()
 
         return ForgotPasswordResponse(
             message=message,
