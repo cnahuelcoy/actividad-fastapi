@@ -112,11 +112,35 @@ class AuthService:
             return ForgotPasswordResponse(message=message)
 
         token, jti, expires_at = create_reset_token(user.id)
+        self.db.add(
+            PasswordResetTokenModel(
+                jti=jti,
+                userId=user.id,
+                expiresAt=expires_at,
+                usedAt=None,
+            )
+        )
+        self.db.commit()
 
         return ForgotPasswordResponse(
             message=message,
             reset_link=f"{FRONTEND_URL}/reset-password?token={token}",
         )
+
+    def reset_password(self, data: ResetPasswordDto) -> None:
+        user_id, jti, expires_at = _decode_reset_token(data.reset_token)
+        password_hash = hash_password(data.new_password)
+
+        # Consumir el token, cambiar la contraseña y cerrar sesiones es atómico.
+        # Si falla una escritura, también se revierte el consumo del token.
+        with self.db.begin():
+            if not self.users_repository.consume_reset_token(jti, user_id, expires_at):
+                raise _invalid_reset_token()
+
+            if not self.users_repository.update_password_hash(user_id, password_hash):
+                raise _invalid_reset_token()
+
+            self.users_repository.invalidate_sessions(user_id)
 
 
 AuthServiceDep = Annotated[AuthService, Depends()]

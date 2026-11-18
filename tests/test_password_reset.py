@@ -13,7 +13,8 @@ from datetime import UTC, datetime, timedelta
 from tempfile import TemporaryDirectory
 from threading import Barrier
 from unittest.mock import patch
-from uuid import uuid4
+from urllib.parse import parse_qs, urlparse
+from uuid import UUID, uuid4
 
 import jwt
 from sqlalchemy import create_engine, event, select
@@ -81,7 +82,7 @@ async def request(app, path, body=None, *, method="POST", headers=()):
 
 class PasswordResetTests(unittest.TestCase):
     def setUp(self):
-        self.directory = TemporaryDirectory(prefix="password-reset-", dir="/tmp")
+        self.directory = TemporaryDirectory(prefix="password-reset-")
         self.addCleanup(self.directory.cleanup)
         self.engine = create_engine(
             f"sqlite:///{self.directory.name}/tests.db",
@@ -274,8 +275,81 @@ class PasswordResetTests(unittest.TestCase):
         self.assertEqual(status, 200)
         data = json.loads(content)["data"]
         self.assertIn("Si el correo está registrado", data["message"])
-        self.assertIsNone(data["reset_link"])
+        self.assertNotIn("reset_link", data)
         self.assert_unchanged()
+
+    def test_complete_recovery_from_registration_and_forgot_link(self):
+        email = "recuperacion@example.com"
+        status, content = asyncio.run(
+            request(
+                self.app,
+                "/api/auth/register",
+                {
+                    "name": "Usuario Recuperacion",
+                    "email": email,
+                    "password": OLD_PASSWORD,
+                },
+            )
+        )
+        self.assertEqual(status, 201)
+        user_id = UUID(json.loads(content)["data"]["id"])
+        with Session(self.engine) as db:
+            previous_sessions = list(
+                db.scalars(
+                    select(UserSessionModel.id).where(
+                        UserSessionModel.userId == user_id
+                    )
+                )
+            )
+            self.assertTrue(previous_sessions)
+
+        status, content = asyncio.run(
+            request(self.app, "/api/auth/password/forgot", {"email": email})
+        )
+        self.assertEqual(status, 200)
+        link = json.loads(content)["data"]["reset_link"]
+        token = parse_qs(urlparse(link).query)["token"][0]
+        claims = jwt.decode(token, TEST_SECRET, algorithms=["HS256"])
+        self.assertEqual(claims["sub"], str(user_id))
+        self.assertEqual(claims["purpose"], "password_reset")
+        remaining = claims["exp"] - datetime.now(UTC).timestamp()
+        self.assertGreater(remaining, 890)
+        self.assertLessEqual(remaining, 900)
+        with Session(self.engine) as db:
+            stored = db.get(PasswordResetTokenModel, claims["jti"])
+            self.assertIsNotNone(stored)
+            self.assertEqual(stored.userId, user_id)
+            self.assertIsNone(stored.usedAt)
+            self.assertEqual(
+                int(stored.expiresAt.replace(tzinfo=UTC).timestamp()), claims["exp"]
+            )
+
+        self.assertEqual(self.reset(token), (204, b""))
+        for session_id in previous_sessions:
+            status, _ = asyncio.run(
+                request(
+                    self.app,
+                    "/api/auth/me",
+                    method="GET",
+                    headers=[(b"cookie", f"sid={session_id}".encode())],
+                )
+            )
+            self.assertEqual(status, 401)
+
+        for password, expected in ((OLD_PASSWORD, 401), (NEW_PASSWORD, 200)):
+            status, _ = asyncio.run(
+                request(
+                    self.app,
+                    "/api/auth/login",
+                    {"email": email, "password": password},
+                )
+            )
+            self.assertEqual(status, expected)
+        self.assertEqual(self.reset(token, password="OtraClave789!")[0], 401)
+        with Session(self.engine) as db:
+            self.assertTrue(
+                verify_password(NEW_PASSWORD, db.get(UserModel, user_id).passwordHash)
+            )
 
     def test_jti_must_belong_to_subject(self):
         self.assertEqual(self.reset(self.token(sub=str(self.other_user_id)))[0], 401)
